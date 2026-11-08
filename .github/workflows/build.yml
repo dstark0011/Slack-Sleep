@@ -17,6 +17,11 @@ jobs:
       - name: Unzip project
         run: unzip -q slack-repo.zip
 
+      - name: Patch Android versions
+        run: |
+          sed -i 's/version "8.5.2"/version "8.7.3"/' repo/android/build.gradle.kts
+          sed -i 's/compileSdk = 34/compileSdk = 35/' repo/android/app/build.gradle.kts
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
