@@ -5,6 +5,9 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -24,8 +27,19 @@ jobs:
         working-directory: android
         run: gradle assembleDebug --stacktrace
 
+      - name: Rename APK
+        run: mv android/app/build/outputs/apk/debug/app-debug.apk slack.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: slack-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: slack.apk
           retention-days: 30
+
+      - name: Publish as latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Slack build ${{ github.run_number }}
+          files: slack.apk
+          make_latest: true
