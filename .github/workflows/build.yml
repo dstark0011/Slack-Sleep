@@ -22,6 +22,12 @@ jobs:
           sed -i 's/version "8.5.2"/version "8.7.3"/' repo/android/build.gradle.kts
           sed -i 's/compileSdk = 34/compileSdk = 35/' repo/android/app/build.gradle.kts
 
+      - name: Use the phone's time zone
+        run: |
+          sed -i 's/,timeZone:"Europe\/London"//g' repo/web/app.js
+          sed -i 's/, UK time</, phone time</' repo/web/app.js
+          sed -i 's/ UK time<\/p>/<\/p>/g' repo/web/app.js
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
