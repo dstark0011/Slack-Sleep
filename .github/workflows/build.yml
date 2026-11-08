@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Unzip project
+        run: unzip -q slack-repo.zip
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,17 +27,16 @@ jobs:
           gradle-version: "8.9"
 
       - name: Build debug APK
-        working-directory: android
+        working-directory: repo/android
         run: gradle assembleDebug --stacktrace
 
       - name: Rename APK
-        run: mv android/app/build/outputs/apk/debug/app-debug.apk slack.apk
+        run: mv repo/android/app/build/outputs/apk/debug/app-debug.apk slack.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: slack-apk
           path: slack.apk
-          retention-days: 30
 
       - name: Publish as latest release
         uses: softprops/action-gh-release@v2
