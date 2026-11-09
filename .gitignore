@@ -1,0 +1,14 @@
+.env
+.garth/
+__pycache__/
+*.pyc
+data/raw/
+dist/
+.venv/
+# personal health data stays local
+data/*.json
+data/slack-data.js
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

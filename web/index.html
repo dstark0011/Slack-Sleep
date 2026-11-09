@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Slack — sleep</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><h1>Slack</h1><span class="src" id="src"></span></div>
+    <div class="nights" id="nights" role="group" aria-label="Choose a night"></div>
+  </header>
+
+  <section class="view" id="v-tonight">
+    <div class="hero">
+      <div class="ring" id="ring"></div>
+      <div class="verdict" id="verdict"></div>
+    </div>
+    <div class="chips" id="yday"></div>
+    <div class="card sounding" id="sounding"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="card"><h3>What happened</h3><p class="sub">Against your own baselines and what your data says moves your sleep</p><ul class="ins" id="ins"></ul></div>
+    <div class="card"><h3>How the score is built</h3><p class="sub">Restoration out of 100. Every point is traceable.</p><div class="bd" id="bd"></div></div>
+  </section>
+
+  <section class="view" id="v-week"><div id="week"></div></section>
+
+  <section class="view" id="v-drivers">
+    <div class="card guide"><h3>Your sleep playbook</h3><p class="sub" id="gsub"></p><ol id="guide"></ol></div>
+    <div class="card"><h3>Best time to sleep at home</h3><p class="sub">Average Restoration by lights-out time, home nights only</p><div class="buckets" id="buckets"></div></div>
+    <div class="card"><h3>What moves your sleep</h3><p class="sub">Each factor is the day before the night. Change in Restoration vs comparable nights; HRV is measured against your own 7-night average, so the long-term slide doesn’t skew it.</p><div id="drivers"></div></div>
+  </section>
+
+  <section class="view" id="v-trends">
+    <div class="card alert" id="slide"></div>
+    <div class="seg" role="group" aria-label="Metric">
+      <button data-m="recovery" aria-pressed="true">Recovery</button>
+      <button data-m="score">Score</button>
+      <button data-m="deep">Deep</button>
+      <button data-m="debt">Debt</button>
+      <button data-m="bed">Bedtime</button>
+    </div>
+    <div class="card chart" id="trend"></div>
+    <div id="long"></div>
+  </section>
+
+  <section class="view" id="v-journal">
+    <div class="card"><h3 id="jtitle">Tag this night</h3><p class="sub">Runs, stress, travel, gym, cold plunges and location are tagged automatically from Garmin and Hevy. Add what the watch can’t see.</p><div class="tags" id="tags"></div></div>
+    <div class="card"><h3>What your habits do</h3><p class="sub">Average change on tagged nights vs untagged</p><div id="effects"></div></div>
+  </section>
+</div>
+
+<nav class="tabs" aria-label="Sections"><div class="in">
+  <a href="#tonight" data-v="tonight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></svg>Night</a>
+  <a href="#week" data-v="week"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Week</a>
+  <a href="#drivers" data-v="drivers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h10M4 12h16M4 18h7"/><circle cx="17" cy="6" r="2"/><circle cx="14" cy="18" r="2"/></svg>Drivers</a>
+  <a href="#trends" data-v="trends"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 3 6-8 3 3"/></svg>Trends</a>
+  <a href="#journal" data-v="journal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg>Journal</a>
+</div></nav>
+
+<script src="../data/slack-data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

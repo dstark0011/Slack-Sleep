@@ -1,0 +1,10 @@
+{
+  "sleep_need_minutes": 470,
+  "days_to_sync": 90,
+  "home_areas": ["Taunton Deane", "West Somerset", "Sedgemoor", "Exeter"],
+  "offshore_markers": ["[Boat]"],
+  "offshore_periods": [],
+  "travel_days": [],
+  "zone4_floor_bpm": 152,
+  "hard_run_z45_minutes": 20
+}
