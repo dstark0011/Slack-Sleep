@@ -155,6 +155,16 @@ nav.tabs a[aria-current="page"]{color:var(--ink)}
 .bk .v{font-size:30px;line-height:1}
 .bk .k{font-size:12px;color:var(--ink3);margin-top:4px}
 .bk.best{outline:2px solid var(--good)}
+.dnote{font-size:12.5px;color:var(--ink2);margin:0 0 10px;line-height:1.45}
+.dhead{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin:18px 0 2px;font-weight:700}
+.dhead:first-of-type{margin-top:2px}
+.drv .dsub{font-weight:400;font-size:12.5px;color:var(--ink3)}
+.rawline{font-size:11.5px;color:var(--ink3);margin-top:6px;font-variant-numeric:tabular-nums}
+.runs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px}
+.runs .rc{background:var(--surface2);border-radius:14px;padding:10px;text-align:center}
+.runs .rc .v{font-size:26px;line-height:1;font-variant-numeric:tabular-nums}
+.runs .rc .k{font-size:11px;color:var(--ink3);margin-top:4px}
+.runcaveat{font-size:12.5px;color:var(--ink2);margin:10px 0 0;line-height:1.45}
 .alert{border-left:4px solid var(--awake)}
 .seg{flex-wrap:nowrap}
 

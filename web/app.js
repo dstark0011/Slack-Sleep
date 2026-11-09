@@ -7,7 +7,8 @@ const TAGS = [...PLACE_TAGS,"Alcohol","Caffeine after 2pm","Late meal","Screens 
 const NIGHTS = RAW.map(r=>({date:r[0],start:r[1],end:r[2],score:r[3],sleep:r[4],deep:r[5],light:r[6],rem:r[7],awake:r[8],awakeN:r[9],sstress:r[10],rhr:r[11],hrv:r[12],
   ds:r[13],hi:r[14],z45:r[15],z45est:r[16],runHour:r[17],walk:r[18],elev:r[19],lift:r[20],plunge:r[21],steps:r[22],loc:r[23],travel:r[24]}));
 
-try{const T=JSON.parse(localStorage.getItem("slack.tags.v1"))||{};NIGHTS.forEach(n=>{const t=T[n.date]||[];if(t.includes("Slept at sea"))n.loc="off";else if(t.includes("Away from home"))n.loc="away";if(t.includes("Travel day"))n.travel=1;});}catch(e){}
+NIGHTS.forEach(n=>n.tags=[]);
+try{const T=JSON.parse(localStorage.getItem("slack.tags.v1"))||{};NIGHTS.forEach(n=>{const t=T[n.date]||[];n.tags=t;if(t.includes("Slept at sea"))n.loc="off";else if(t.includes("Away from home"))n.loc="away";if(t.includes("Travel day"))n.travel=1;});}catch(e){}
 const HAS_GARMIN_SCORE=NIGHTS.some(n=>n.score>0), HAS_HRV=NIGHTS.some(n=>n.hrv!=null);
 const $=s=>document.querySelector(s);
 const median=a=>{const s=a.filter(ok).sort((x,y)=>x-y),m=s.length>>1;return s.length?(s.length%2?s[m]:(s[m-1]+s[m])/2):0;};
@@ -200,28 +201,123 @@ function renderTonight(){
   $("#bd").innerHTML=n.parts.map(p=>`<span class="nm">${p.k}</span><div><div class="track"><div class="fill" style="width:${p.s*100}%;background:var(${band(p.s*100)})"></div></div><div style="font-size:11.5px;color:var(--ink3);margin-top:3px">${p.why}</div></div><span class="pts num">${p.pts.toFixed(0)}/${p.w}</span>`).join("");
 }
 
+/* ---------- drivers: adjusted effects (multiple regression) ---------- */
+// Invert a square matrix (Gauss–Jordan); null if singular.
+function matInv(M){const n=M.length,A=M.map((r,i)=>[...r,...Array.from({length:n},(_,j)=>i===j?1:0)]);
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(A[r][c])>Math.abs(A[p][c]))p=r;[A[c],A[p]]=[A[p],A[c]];
+    const pv=A[c][c];if(Math.abs(pv)<1e-10)return null;for(let j=0;j<2*n;j++)A[c][j]/=pv;
+    for(let r=0;r<n;r++)if(r!==c){const f=A[r][c];if(f)for(let j=0;j<2*n;j++)A[r][j]-=f*A[c][j];}}
+  return A.map(r=>r.slice(n));}
+// Ordinary least squares with a tiny ridge for numerical stability. Returns coefficients + standard errors.
+function ols(X,y){const n=X.length,p=X[0].length;
+  const XtX=Array.from({length:p},()=>Array(p).fill(0)),Xty=Array(p).fill(0);
+  for(let i=0;i<n;i++)for(let a=0;a<p;a++){Xty[a]+=X[i][a]*y[i];for(let b=0;b<p;b++)XtX[a][b]+=X[i][a]*X[i][b];}
+  for(let a=1;a<p;a++)XtX[a][a]+=1e-3; // ridge (skip intercept)
+  const inv=matInv(XtX);if(!inv)return null;
+  const beta=inv.map((row)=>row.reduce((s,v,b)=>s+v*Xty[b],0));
+  let rss=0;for(let i=0;i<n;i++){let yh=0;for(let a=0;a<p;a++)yh+=X[i][a]*beta[a];rss+=(y[i]-yh)**2;}
+  const df=Math.max(1,n-p),sig2=rss/df;
+  const se=inv.map((row,a)=>Math.sqrt(Math.max(0,sig2*row[a])));
+  return {beta,se,df};}
+const normCdf=z=>{const t=1/(1+.2316419*Math.abs(z)),d=.3989423*Math.exp(-z*z/2),pr=d*t*(.3193815+t*(-.3565638+t*(1.781478+t*(-1.821256+t*1.330274))));return z>0?1-pr:pr;};
+const pTwo=t=>2*(1-normCdf(Math.abs(t)));
+
+function buildDriverModel(){
+  // run-length of the current at-sea block, for "first nights offshore"
+  let run=0; NIGHTS.forEach(n=>{const sea=n.loc==="off"; run=sea?run+1:0; n.seaNight=sea?run:0;});
+  const hasTag=t=>NIGHTS.some(n=>n.tags.includes(t));
+  const specs=[
+    {k:"Late lights-out",desc:"45+ min after your usual",g:"lever",f:n=>n.late?1:0,tip:"Hold lights-out within 45 min of your usual time"},
+    {k:"Evening run",desc:"A run after 4pm (timing)",g:"lever",f:n=>(n.z45>0&&n.runHour>=16)?1:0,tip:"Shift runs earlier — try two weeks of morning runs and compare"},
+    {k:"Hard effort",desc:"20+ min in zones 4–5 (intensity)",g:"lever",f:n=>n.z45>=20?1:0,tip:"Cap zones 4–5 near 20 min, and not late in the day"},
+    {k:"15k+ steps",desc:"A big day on your feet",g:"lever",f:n=>(n.steps!=null&&n.steps>=15000)?1:0,tip:"After a huge step day, ease off the evening"},
+    {k:"Strength session",desc:"Logged in Hevy",g:"lever",f:n=>n.lift?1:0},
+    {k:"Cold plunge",desc:"Any time of day",g:"lever",f:n=>n.plunge?1:0,tip:"If plunges keep costing deep sleep, keep them to the morning"},
+    {k:"Alcohol",desc:"Tagged in the journal",g:"lever",f:n=>n.tags.includes("Alcohol")?1:0,tip:"Alcohol fragments the back half of the night"},
+    {k:"Caffeine after 2pm",desc:"Tagged in the journal",g:"lever",f:n=>n.tags.includes("Caffeine after 2pm")?1:0,tip:"Pull your last coffee earlier"},
+    {k:"Late meal",desc:"Tagged in the journal",g:"lever",f:n=>n.tags.includes("Late meal")?1:0,tip:"Leave 2–3 h between dinner and your bunk"},
+    {k:"Screens in bed",desc:"Tagged in the journal",g:"lever",f:n=>n.tags.includes("Screens in bed")?1:0,tip:"Phone out of the bunk"},
+    {k:"Hot room",desc:"Tagged in the journal",g:"lever",f:n=>n.tags.includes("Hot room")?1:0,tip:"Cooler and darker where you can"},
+    {k:"High-stress day",desc:"Daytime stress 50+",g:"context",f:n=>n.ds>=50?1:0,tip:"On heavy days, guard the wind-down: no hard training, screens down early"},
+    {k:"Sleeping at sea",desc:"vs at home",g:"context",f:n=>n.loc==="off"?1:0},
+    {k:"Away from home",desc:"vs at home",g:"context",f:n=>n.loc==="away"?1:0},
+    {k:"Travel or crew change",desc:"Night before or after travel",g:"context",f:n=>n.travel?1:0,tip:"Bank sleep the night before a crew change, not just after"},
+    {k:"First nights offshore",desc:"First 3 nights of a hitch",g:"context",f:n=>(n.loc==="off"&&n.seaNight<=3)?1:0,tip:"Expect a rough first night or two offshore and plan light days"}
+  ];
+  const y=NIGHTS.map(n=>n.R);
+  // keep only predictors with enough spread to estimate (and that someone has tagged)
+  const usable=specs.filter(s=>{const c=NIGHTS.reduce((a,n)=>a+s.f(n),0);return c>=3&&c<=NIGHTS.length-3;});
+  const X=NIGHTS.map(n=>[1,...usable.map(s=>s.f(n))]);
+  const fit=NIGHTS.length>usable.length+2?ols(X,y):null;
+  usable.forEach((s,i)=>{
+    const b=fit?fit.beta[i+1]:0, se=fit?fit.se[i+1]:0, t=se>1e-9?b/se:0, p=pTwo(t);
+    s.beta=b; s.se=se; s.p=p; s.ci=[b-1.96*se,b+1.96*se];
+    s.conf = !fit||se<=1e-9 ? ["w","Unclear"] : p<0.01 ? ["s","Strong"] : p<0.05 ? ["l","Likely"] : ["w","Unclear"];
+    // raw (unadjusted) numbers for context, comparable-nights style
+    const Y=NIGHTS.filter(n=>s.f(n)===1), N=NIGHTS.filter(n=>s.f(n)===0&&(s.g==="context"||!n.travel));
+    const diff=k=>{const a=mean(Y.map(x=>x[k])),b2=mean(N.map(x=>x[k]));return a==null||b2==null?0:a-b2;};
+    s.ny=Y.length; s.nn=N.length; s.dRraw=Math.round(diff("R")); s.dDeep=Math.round(diff("deep")/60); s.dHrv=Math.round(diff("hrvD"));
+  });
+  return {specs:usable,fit,nLever:usable.filter(s=>s.g==="lever").length};
+}
+function runsSpotlight(){
+  const runners=NIGHTS.filter(n=>n.z45>0&&!n.travel);
+  const grp=f=>{const g=runners.filter(f);return {n:g.length,R:g.length?Math.round(mean(g.map(x=>x.R))):null,deep:g.length?Math.round(mean(g.map(x=>x.deep))/60):null};};
+  const rest=NIGHTS.filter(n=>n.z45===0&&!n.travel);
+  return {total:runners.length,
+    morning:grp(n=>n.runHour<12), evening:grp(n=>n.runHour>=16),
+    easy:grp(n=>n.z45<20), hard:grp(n=>n.z45>=20),
+    rest:{n:rest.length,R:rest.length?Math.round(mean(rest.map(x=>x.R))):null}};
+}
+const DMODEL=buildDriverModel();
+
 /* ---------- drivers view ---------- */
+function driverCard(s){
+  const b=Math.round(s.beta), col=b>=0?"--good":"--bad", w=clamp(Math.abs(b)/20*50,2,50);
+  const lo=Math.round(Math.min(s.ci[0],s.ci[1])), hi=Math.round(Math.max(s.ci[0],s.ci[1]));
+  return `<div class="drv"><div class="top"><span class="nm">${s.k}<br><span class="dsub">${s.desc}</span></span>
+    <span class="eff num" style="color:var(${Math.abs(b)<2?"--ink3":col})">${sign(b)}</span></div>
+    <div class="divbar"><span style="background:var(${col});${b>=0?`left:50%;width:${w}%`:`right:50%;width:${w}%`}"></span></div>
+    <div class="meta"><span>likely ${sign(lo)} to ${sign(hi)} pts · ${s.ny} of ${NIGHTS.length} nights</span><span class="conf ${s.conf[0]}">${s.conf[1]}</span></div>
+    <div class="rawline">raw split ${sign(s.dRraw)} · deep ${sign(s.dDeep)} min · HRV ${sign(s.dHrv)} ms</div></div>`;
+}
+function runsHTML(R){
+  if(R.total<3) return "";
+  const tile=(lab,g)=>`<div class="rc"><div class="v num" style="color:var(${g.R==null?"--ink3":band(g.R)})">${g.R??"–"}</div><div class="k">${lab}<br>${g.n} night${g.n===1?"":"s"}</div></div>`;
+  const confounded=R.morning.n<3;
+  const caveat=confounded
+    ? `<p class="runcaveat">Almost all your runs are in the evening (only ${R.morning.n} morning run${R.morning.n===1?"":"s"}), so the numbers can’t separate <b>when</b> you run from <b>how hard</b>. Run a couple of weeks of morning runs and this splits cleanly.</p>`
+    : (R.morning.R!=null&&R.evening.R!=null?`<p class="runcaveat">Morning runs score <b>${sign(R.morning.R-R.evening.R)}</b> Restoration vs evening runs across comparable nights — ${R.morning.R>R.evening.R?"worth shifting earlier":"timing looks minor; intensity matters more"}.</p>`:"");
+  return `<h4 class="dhead">Runs — timing vs intensity</h4>
+    <p class="dnote" style="margin-bottom:8px">Average Restoration the night after, runs only. This is the one knot worth untangling.</p>
+    <div class="runs">${tile("Morning run",R.morning)}${tile("Evening run",R.evening)}${tile("Rest day",R.rest)}</div>
+    <div class="runs" style="margin-top:8px">${tile("Easy (&lt;20m Z4–5)",R.easy)}${tile("Hard (20m+ Z4–5)",R.hard)}${tile("Rest day",R.rest)}</div>
+    ${caveat}`;
+}
 function renderDrivers(){
-  const ranked=[...DRIVERS].filter(d=>d.ny>=3).sort((a,b)=>Math.abs(b.t)-Math.abs(a.t));
-  $("#drivers").innerHTML=ranked.map(d=>{
-    const w=clamp(Math.abs(d.dR)/20*50,2,50), col=d.dR>=0?"--good":"--bad";
-    return `<div class="drv"><div class="top"><span class="nm">${d.k}<br><span style="font-weight:400;font-size:12.5px;color:var(--ink3)">${d.d}</span></span><span class="eff num" style="color:var(${Math.abs(d.dR)<3?"--ink3":col})">${sign(d.dR)}</span></div>
-    <div class="divbar"><span style="background:var(${col});${d.dR>=0?`left:50%;width:${w}%`:`right:50%;width:${w}%`}"></span></div>
-    <div class="row"><div>Deep<b>${sign(d.dDeep)} min</b></div><div>HRV<b>${sign(d.dHrv)} ms</b></div><div>Awake<b>${sign(d.dAwake)} min</b></div></div>
-    <div class="meta"><span>${d.ny} nights vs ${d.nn}</span><span class="conf ${d.conf[0]}">${d.conf[1]}</span></div></div>`;}).join("")+
-    `<p class="empty" style="margin-top:12px;font-size:12.5px">Effects are differences in averages, not proof of cause. Some run intensities before mid-September are estimated from average heart rate.</p>`;
-  // buckets
+  const M=DMODEL;
+  const levers=M.specs.filter(s=>s.g==="lever").sort((a,b)=>a.beta-b.beta); // worst (most negative) first
+  const context=M.specs.filter(s=>s.g==="context").sort((a,b)=>Math.abs(b.beta)-Math.abs(a.beta));
+  $("#drivers").innerHTML=
+    `<p class="dnote">Each number is the factor’s effect on Restoration <b>with your other habits, location and stress held steady</b> — so overlapping habits don’t get double credit. Ranked with the biggest drags first.</p>`+
+    `<h4 class="dhead">Levers you can change</h4>`+
+    (levers.length?levers.map(driverCard).join(""):`<p class="empty">Tag a few nights in the Journal (alcohol, caffeine, late meal…) and they’ll show up here.</p>`)+
+    `<h4 class="dhead">Context — not yours to change</h4>`+
+    context.map(driverCard).join("")+
+    runsHTML(runsSpotlight())+
+    `<p class="empty" style="margin-top:14px">Effects are associations across ${NIGHTS.length} nights, not proof of cause. With ${M.nLever} levers tested at once, a lone “Likely” can be chance — lean on the “Strong” ones. Some run intensities before mid-September are estimated from average heart rate.</p>`;
+  // best-bedtime buckets (home nights)
   const H=NIGHTS.filter(n=>n.loc==="home"&&!n.travel);
   const B=[["Before 22:30",n=>n.bed<22.5],["22:30–23:30",n=>n.bed>=22.5&&n.bed<23.5],["After 23:30",n=>n.bed>=23.5]].map(([k,f])=>{const g=H.filter(f);return {k,n:g.length,v:g.length?Math.round(mean(g.map(x=>x.R))):null};});
-  const best=Math.max(...B.filter(b=>b.n>=3).map(b=>b.v));
-  $("#buckets").innerHTML=B.map(b=>`<div class="bk ${b.v===best?"best":""}"><div class="v num" style="color:var(${b.v==null?"--ink3":band(b.v)})">${b.v??"–"}</div><div class="k">${b.k}<br>${b.n} nights</div></div>`).join("");
-  // playbook
-  const neg=ranked.filter(d=>d.dR<=-3&&d.conf[0]!=="w"&&d.tip);
-  const g=neg.map(d=>`<li><b>${d.k}:</b> ${d.tip}. <span style="color:var(--ink3)">(${sign(d.dR)} points, ${d.conf[1].toLowerCase()})</span></li>`);
-  const bb=B.find(b=>b.v===best); if(bb) g.push(`<li><b>Lights-out at home:</b> aim for ${bb.k.toLowerCase()}, your best window (${bb.v} average).</li>`);
-  const sea=D("Sleeping at sea"); if(sea.dR>=3) g.push(`<li><b>Copy your sea routine at home:</b> you sleep ${sea.dR} points better offshore. The fixed schedule is the likely reason.</li>`);
-  $("#guide").innerHTML=g.join("")||`<li>No factor stands out strongly yet. Keep tagging nights.</li>`;
-  $("#gsub").textContent=`Built from ${NIGHTS.length} nights since ${shortDate(NIGHTS[0].date)}, strongest effects first`;
+  const rated=B.filter(b=>b.n>=3).map(b=>b.v), best=rated.length?Math.max(...rated):null;
+  $("#buckets").innerHTML=B.map(b=>`<div class="bk ${b.v===best&&best!=null?"best":""}"><div class="v num" style="color:var(${b.v==null?"--ink3":band(b.v)})">${b.v??"–"}</div><div class="k">${b.k}<br>${b.n} nights</div></div>`).join("");
+  // playbook from the adjusted levers that are both negative and at least "Likely"
+  const neg=levers.filter(s=>s.beta<=-3&&s.conf[0]!=="w"&&s.tip);
+  const g=neg.map(s=>`<li><b>${s.k}:</b> ${s.tip}. <span style="color:var(--ink3)">(${sign(Math.round(s.beta))} points adjusted, ${s.conf[1].toLowerCase()})</span></li>`);
+  const bb=B.find(b=>b.v===best&&best!=null); if(bb) g.push(`<li><b>Lights-out at home:</b> aim for ${bb.k.toLowerCase()}, your best window (${bb.v} average).</li>`);
+  const sea=M.specs.find(s=>s.k==="Sleeping at sea"); if(sea&&sea.beta>=3) g.push(`<li><b>Copy your sea routine at home:</b> even allowing for everything else you sleep ${Math.round(sea.beta)} points better offshore — the fixed schedule is the likely reason.</li>`);
+  $("#guide").innerHTML=g.join("")||`<li>Nothing stands out strongly yet. Keep tagging nights and it’ll sharpen up.</li>`;
+  $("#gsub").textContent=`Adjusted effects from ${NIGHTS.length} nights since ${shortDate(NIGHTS[0].date)}, biggest drags first`;
 }
 
 /* ---------- trends ---------- */
